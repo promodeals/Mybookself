@@ -171,9 +171,8 @@ public class PdfViewerActivity extends Activity {
             canvas.drawBitmap(bitmap, null, new RectF(0, 0, getWidth(), getHeight()), paint);
         }
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (event.getPointerCount() > 1 || detector.isInProgress()) {
-                detector.onTouchEvent(event); return true;
-            }
+            boolean multiTouch = event.getPointerCount() > 1 || detector.isInProgress();
+            getParent().requestDisallowInterceptTouchEvent(multiTouch);
             detector.onTouchEvent(event);
             return true;
         }
