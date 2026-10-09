@@ -1,190 +1,24 @@
 package com.example.books;
-
-import android.app.Activity;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RectF;
-import android.graphics.pdf.PdfRenderer;
-import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
-import android.view.Gravity;
-import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.HorizontalScrollView;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
-import android.widget.Toast;
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-public class PdfViewerActivity extends Activity {
-    public static final String EXTRA_PATH = "pdf_path";
-    public static final String EXTRA_TITLE = "pdf_title";
-    private ParcelFileDescriptor descriptor;
-    private PdfRenderer renderer;
-    private final List<ZoomPageView> pageViews = new ArrayList<>();
-    private TextView pageLabel;
-    private int dp(float n) { return (int)(n * getResources().getDisplayMetrics().density + 0.5f); }
-
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        String path = getIntent().getStringExtra(EXTRA_PATH);
-        String title = getIntent().getStringExtra(EXTRA_TITLE);
-        setTitle(title == null ? "PDF Reader" : title);
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xffeef1f5);
-
-        LinearLayout heading = new LinearLayout(this);
-        heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.setPadding(dp(16), dp(10), dp(12), dp(10));
-        heading.setBackgroundColor(Color.WHITE);
-        heading.setElevation(dp(2));
-        LinearLayout titles = new LinearLayout(this);
-        titles.setOrientation(LinearLayout.VERTICAL);
-        TextView brand = text("BOOKS  ·  PDF READER", 10, true, 0xff64748b);
-        TextView name = text(title == null ? "Your document" : title, 17, true, 0xff172033);
-        titles.addView(brand);
-        titles.addView(name);
-        heading.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
-        pageLabel = text("Pinch to zoom", 11, false, 0xff64748b);
-        heading.addView(pageLabel);
-        root.addView(heading, new LinearLayout.LayoutParams(-1, -2));
-
-        LinearLayout tools = new LinearLayout(this);
-        tools.setGravity(Gravity.CENTER_VERTICAL);
-        tools.setPadding(dp(12), dp(6), dp(12), dp(6));
-        tools.setBackgroundColor(Color.WHITE);
-        Button minus = toolButton("−");
-        Button reset = toolButton("Fit page");
-        Button plus = toolButton("+");
-        minus.setOnClickListener(v -> changeZoom(0.8f));
-        plus.setOnClickListener(v -> changeZoom(1.25f));
-        reset.setOnClickListener(v -> { for (ZoomPageView p : pageViews) p.setZoom(1f); pageLabel.setText("Fit page"); });
-        tools.addView(minus, new LinearLayout.LayoutParams(dp(48), dp(42)));
-        LinearLayout.LayoutParams resetParams = new LinearLayout.LayoutParams(0, dp(42), 1);
-        resetParams.leftMargin = dp(8); resetParams.rightMargin = dp(8);
-        tools.addView(reset, resetParams);
-        tools.addView(plus, new LinearLayout.LayoutParams(dp(48), dp(42)));
-        root.addView(tools, new LinearLayout.LayoutParams(-1, -2));
-
-        LinearLayout pages = new LinearLayout(this);
-        pages.setOrientation(LinearLayout.VERTICAL);
-        pages.setPadding(dp(8), dp(10), dp(8), dp(18));
-        ScrollView vertical = new ScrollView(this);
-        vertical.setFillViewport(false);
-        vertical.addView(pages, new ScrollView.LayoutParams(-1, -2));
-        HorizontalScrollView horizontal = new HorizontalScrollView(this);
-        horizontal.setFillViewport(true);
-        horizontal.setHorizontalScrollBarEnabled(true);
-        horizontal.addView(vertical, new HorizontalScrollView.LayoutParams(-1, -1));
-        root.addView(horizontal, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
-
-        try {
-            if (path == null || !new File(path).isFile()) throw new IOException("The saved PDF file could not be found. Import it again.");
-            descriptor = ParcelFileDescriptor.open(new File(path), ParcelFileDescriptor.MODE_READ_ONLY);
-            renderer = new PdfRenderer(descriptor);
-            int availableWidth = Math.max(1, getResources().getDisplayMetrics().widthPixels - dp(40));
-            int count = renderer.getPageCount();
-            for (int index = 0; index < count; index++) {
-                PdfRenderer.Page page = renderer.openPage(index);
-                int width = availableWidth;
-                int height = Math.max(1, (int)(width * (page.getHeight() / (float)page.getWidth())));
-                Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                bitmap.eraseColor(Color.WHITE);
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
-                page.close();
-                ZoomPageView image = new ZoomPageView(bitmap, width, height);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, height);
-                params.gravity = Gravity.CENTER_HORIZONTAL;
-                params.bottomMargin = dp(12);
-                pages.addView(image, params);
-                pageViews.add(image);
-            }
-            pageLabel.setText(count + (count == 1 ? " page" : " pages") + " · pinch or use + / −");
-            if (count == 0) showError(pages, "This PDF has no pages.");
-        } catch (Exception e) {
-            showError(pages, "Could not open this PDF. The file may be damaged or unsupported.\n" + e.getMessage());
-            Toast.makeText(this, "PDF could not be opened", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private TextView text(String s, int size, boolean bold, int color) {
-        TextView t = new TextView(this); t.setText(s); t.setTextSize(size); t.setTextColor(color);
-        if (bold) t.setTypeface(null, 1); return t;
-    }
-    private Button toolButton(String label) {
-        Button b = new Button(this); b.setText(label); b.setAllCaps(false); b.setTextSize(16);
-        return b;
-    }
-    private void changeZoom(float factor) {
-        for (ZoomPageView p : pageViews) p.setZoom(p.getZoom() * factor);
-        pageLabel.setText("Zoom " + Math.round((pageViews.isEmpty() ? 1f : pageViews.get(0).getZoom()) * 100) + "%");
-    }
-    private void showError(LinearLayout parent, String message) {
-        TextView error = text(message, 15, false, 0xff374151);
-        error.setGravity(Gravity.CENTER); error.setPadding(dp(24), dp(32), dp(24), dp(32));
-        parent.addView(error, new LinearLayout.LayoutParams(-1, -2));
-    }
-
-    private class ZoomPageView extends View {
-        private final Bitmap bitmap;
-        private final int baseWidth, baseHeight;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        private final ScaleGestureDetector detector;
-        private float zoom = 1f;
-        ZoomPageView(Bitmap bitmap, int width, int height) {
-            super(PdfViewerActivity.this);
-            this.bitmap = bitmap; baseWidth = width; baseHeight = height;
-            setBackgroundColor(Color.WHITE);
-            detector = new ScaleGestureDetector(PdfViewerActivity.this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                @Override public boolean onScale(ScaleGestureDetector d) {
-                    setZoom(zoom * d.getScaleFactor()); return true;
-                }
-            });
-        }
-        float getZoom() { return zoom; }
-        void setZoom(float value) {
-            zoom = Math.max(1f, Math.min(4f, value));
-            ViewGroup.LayoutParams lp = getLayoutParams();
-            if (lp != null) {
-                lp.width = Math.max(baseWidth, (int)(baseWidth * zoom));
-                lp.height = Math.max(baseHeight, (int)(baseHeight * zoom));
-                setLayoutParams(lp);
-            }
-            invalidate();
-        }
-        @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            canvas.drawColor(Color.WHITE);
-            canvas.drawBitmap(bitmap, null, new RectF(0, 0, getWidth(), getHeight()), paint);
-        }
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            boolean multiTouch = event.getPointerCount() > 1 || detector.isInProgress();
-            getParent().requestDisallowInterceptTouchEvent(multiTouch);
-            detector.onTouchEvent(event);
-            return true;
-        }
-        @Override public boolean performClick() { super.performClick(); return true; }
-    }
-
-    @Override protected void onDestroy() {
-        for (ZoomPageView p : pageViews) {
-            // Bitmaps are released with their views when the reader closes.
-        }
-        if (renderer != null) renderer.close();
-        if (descriptor != null) { try { descriptor.close(); } catch (IOException ignored) {} }
-        super.onDestroy();
-    }
+import android.app.Activity;import android.graphics.*;import android.graphics.pdf.PdfRenderer;import android.os.*;import android.view.*;import android.widget.*;import java.io.*;import java.util.*;import java.util.concurrent.*;
+public class PdfViewerActivity extends Activity{
+ public static final String EXTRA_PATH="pdf_path",EXTRA_TITLE="pdf_title"; ParcelFileDescriptor fd;PdfRenderer renderer;ExecutorService worker;LinearLayout pages;ScrollView scroll;TextView status;ArrayList<PV> views=new ArrayList<>();ArrayList<int[]> dims=new ArrayList<>();volatile boolean closing=false;float zoom=1;int width;
+ int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
+ TextView label(String s,int z){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(0xff263244);return t;}
+ Button button(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);return b;}
+ public void onCreate(Bundle b){super.onCreate(b);worker=Executors.newSingleThreadExecutor();String path=getIntent().getStringExtra(EXTRA_PATH),title=getIntent().getStringExtra(EXTRA_TITLE);setTitle(title==null?"PDF Reader":title);
+ LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setBackgroundColor(0xffeef1f5);LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);head.setPadding(dp(12),dp(8),dp(8),dp(8));head.addView(label(title==null?"PDF Reader":title,16),new LinearLayout.LayoutParams(0,-2,1));status=label("Preparing PDF…",11);head.addView(status);root.addView(head);
+ LinearLayout bar=new LinearLayout(this);Button minus=button("−"),fit=button("Fit page"),plus=button("+");bar.addView(minus,new LinearLayout.LayoutParams(dp(50),dp(42)));bar.addView(fit,new LinearLayout.LayoutParams(0,dp(42),1));bar.addView(plus,new LinearLayout.LayoutParams(dp(50),dp(42)));root.addView(bar);minus.setOnClickListener(v->zoom(zoom*.8f));plus.setOnClickListener(v->zoom(zoom*1.25f));fit.setOnClickListener(v->zoom(1));
+ pages=new LinearLayout(this);pages.setOrientation(1);pages.setPadding(dp(8),dp(8),dp(8),dp(12));scroll=new ScrollView(this);scroll.addView(pages);scroll.setOnScrollChangeListener((View v,int x,int y,int ox,int oy)->visible());HorizontalScrollView h=new HorizontalScrollView(this);h.addView(scroll,new HorizontalScrollView.LayoutParams(-1,-1));root.addView(h,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
+ if(path==null||!new File(path).isFile()){error("PDF file not found. Import it again.");return;}worker.execute(()->{try{ParcelFileDescriptor d=ParcelFileDescriptor.open(new File(path),ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer r=new PdfRenderer(d);ArrayList<int[]> sz=new ArrayList<>();for(int i=0;i<r.getPageCount();i++){if(closing){r.close();d.close();return;}PdfRenderer.Page p=r.openPage(i);sz.add(new int[]{p.getWidth(),p.getHeight()});p.close();}runOnUiThread(()->{if(closing){try{r.close();d.close();}catch(Exception e){}return;}fd=d;renderer=r;dims.addAll(sz);width=Math.max(dp(180),Math.min(dp(850),getResources().getDisplayMetrics().widthPixels-dp(36)));for(int i=0;i<dims.size();i++){PV p=new PV(i);views.add(p);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(width,height(i));lp.gravity=Gravity.CENTER_HORIZONTAL;lp.bottomMargin=dp(10);pages.addView(p,lp);}status.setText(sz.size()+" pages · loading as needed");visible();});}catch(Exception e){runOnUiThread(()->error("Could not open this PDF. It may be damaged or unsupported."));}});}
+ int height(int i){return Math.max(dp(100),(int)(width*dims.get(i)[1]/(float)Math.max(1,dims.get(i)[0])));}
+ void visible(){if(closing||renderer==null)return;int t=scroll.getScrollY(),b=t+scroll.getHeight(),m=scroll.getHeight();for(PV p:views){if(p.getTop()+p.getHeight()>=t-m&&p.getTop()<=b+m)p.load();else p.release();}}
+ void zoom(float z){zoom=Math.max(1,Math.min(3,z));for(PV p:views){ViewGroup.LayoutParams lp=p.getLayoutParams();lp.width=(int)(width*zoom);lp.height=(int)(height(p.i)*zoom);p.setLayoutParams(lp);p.release();}status.setText("Zoom "+Math.round(zoom*100)+"%");visible();}
+ void error(String s){status.setText("PDF error");pages.addView(label(s,15));}
+ class PV extends View{int i;Bitmap bmp;boolean loading,failed;Paint paint=new Paint(3);ScaleGestureDetector detector;PV(int n){super(PdfViewerActivity.this);i=n;setBackgroundColor(-1);detector=new ScaleGestureDetector(PdfViewerActivity.this,new ScaleGestureDetector.SimpleOnScaleGestureListener(){public boolean onScale(ScaleGestureDetector d){zoom(zoom*d.getScaleFactor());return true;}});}
+ boolean wanted(){int t=scroll.getScrollY(),b=t+scroll.getHeight();return getTop()+getHeight()>=t-scroll.getHeight()&&getTop()<=b+scroll.getHeight()&&!closing;}
+ void load(){if(bmp!=null||loading||failed)return;loading=true;int w=Math.max(1,Math.min(1200,(int)(getWidth()*1.1f)));worker.execute(()->{Bitmap out=null;PdfRenderer.Page p=null;try{if(!closing){p=renderer.openPage(i);int rw=w,rh=Math.max(1,(int)(rw*p.getHeight()/(float)Math.max(1,p.getWidth())));long bytes=(long)rw*rh*2;if(bytes>18L*1024*1024){float f=(float)Math.sqrt(18L*1024*1024/(double)bytes);rw=(int)(rw*f);rh=(int)(rh*f);}out=Bitmap.createBitmap(rw,rh,Bitmap.Config.RGB_565);out.eraseColor(Color.WHITE);p.render(out,null,null,PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);}}catch(Exception e){if(out!=null)out.recycle();out=null;}finally{if(p!=null)p.close();}final Bitmap result=out;runOnUiThread(()->{loading=false;if(!wanted()){if(result!=null)result.recycle();return;}if(result==null)failed=true;else bmp=result;invalidate();});});}
+ void release(){if(bmp!=null){if(!bmp.isRecycled())bmp.recycle();bmp=null;invalidate();}}
+ protected void onDraw(Canvas c){super.onDraw(c);c.drawColor(-1);if(bmp!=null&&!bmp.isRecycled())c.drawBitmap(bmp,null,new RectF(0,0,getWidth(),getHeight()),paint);else{paint.setColor(0xff64748b);paint.setTextSize(dp(13));c.drawText(failed?"Page unavailable":loading?"Loading page…":"Page loads when visible",dp(12),Math.max(dp(24),getHeight()/2f),paint);}}
+ public boolean onTouchEvent(MotionEvent e){detector.onTouchEvent(e);return true;}}
+ protected void onDestroy(){closing=true;for(PV p:views)p.release();if(worker!=null)worker.shutdownNow();PdfRenderer r=renderer;ParcelFileDescriptor d=fd;if(r!=null||d!=null)new Thread(()->{try{if(r!=null)r.close();}catch(Exception e){}try{if(d!=null)d.close();}catch(Exception e){}}).start();super.onDestroy();}
 }
