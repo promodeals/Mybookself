@@ -100,7 +100,7 @@ public class PdfViewerActivity extends Activity {
             for (int index = 0; index < count; index++) {
                 PdfRenderer.Page page = renderer.openPage(index);
                 int width = availableWidth;
-                int height = Math.max(1, (int)(width * (page.getHeight() / (float)page.getWidth()));
+                int height = Math.max(1, (int)(width * (page.getHeight() / (float)page.getWidth())));
                 Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                 bitmap.eraseColor(Color.WHITE);
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY);
