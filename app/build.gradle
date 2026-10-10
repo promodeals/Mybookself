@@ -4,7 +4,7 @@ android {
     namespace 'com.example.books'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.promodeals.booksreaderfix'
+        applicationId 'com.promodeals.mybookshelf'
         minSdk 23
         targetSdk 35
         versionCode 2
